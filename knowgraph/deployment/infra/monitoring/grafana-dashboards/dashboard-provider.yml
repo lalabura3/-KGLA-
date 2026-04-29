@@ -1,0 +1,17 @@
+# =============================================================================
+# Grafana Dashboard 提供者配置
+# =============================================================================
+
+apiVersion: 1
+
+providers:
+  - name: "GPU Dashboard"
+    orgId: 1
+    folder: "学知图谱"
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 10
+    allowUiUpdates: true
+    options:
+      path: /etc/grafana/provisioning/dashboards
+      foldersFromFilesStructure: false

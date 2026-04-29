@@ -1,0 +1,91 @@
+# =============================================================================
+# 学知图谱 — GPU 监控栈 (Prometheus + Grafana)
+# 独立部署，不绑定主服务
+# =============================================================================
+# Usage: docker compose -f docker-compose.monitoring.yml up -d
+
+version: '3.8'
+
+services:
+  # NVIDIA SMI Exporter — 导出 GPU 指标到 Prometheus
+  nvidia-smi-exporter:
+    image: utkuozdemir/nvidia_gpu_exporter:1.2.1
+    container_name: learnflow-gpu-exporter
+    ports:
+      - "9835:9835"
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    command:
+      - --web.listen-address=:9835
+    restart: unless-stopped
+    networks:
+      - monitoring-net
+
+  # Node Exporter — 主机 CPU/内存/磁盘指标
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: learnflow-node-exporter
+    ports:
+      - "9100:9100"
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - --path.procfs=/host/proc
+      - --path.sysfs=/host/sys
+      - --path.rootfs=/rootfs
+    restart: unless-stopped
+    networks:
+      - monitoring-net
+
+  # Prometheus — 指标收集
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: learnflow-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=30d
+    restart: unless-stopped
+    networks:
+      - monitoring-net
+
+  # Grafana — 可视化面板
+  grafana:
+    image: grafana/grafana:latest
+    container_name: learnflow-grafana
+    ports:
+      - "3001:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+      - GF_INSTALL_PLUGINS=nvidia-gpu-dashboard
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana-datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml:ro
+      - ./grafana-dashboards/gpu-dashboard.json:/etc/grafana/provisioning/dashboards/gpu-dashboard.json:ro
+      - ./grafana-dashboards/dashboard-provider.yml:/etc/grafana/provisioning/dashboards/dashboard-provider.yml:ro
+    restart: unless-stopped
+    networks:
+      - monitoring-net
+
+volumes:
+  prometheus_data:
+  grafana_data:
+
+networks:
+  monitoring-net:
+    driver: bridge

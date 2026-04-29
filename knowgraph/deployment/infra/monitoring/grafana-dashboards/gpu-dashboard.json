@@ -1,0 +1,204 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 10,
+      "panels": [],
+      "title": "GPU Overview",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "#EAB308", "value": 70 },
+              { "color": "red", "value": 85 }
+            ]
+          },
+          "unit": "celsius"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 6, "x": 0, "y": 1 },
+      "id": 1,
+      "options": {
+        "orientation": "auto",
+        "reduceOptions": { "values": false, "calcs": ["lastNotNull"], "fields": "" },
+        "showThresholdLabels": false,
+        "showThresholdMarkers": true
+      },
+      "pluginVersion": "10.0.0",
+      "targets": [
+        {
+          "expr": "nvidia_gpu_temperature_celsius{gpu=\"0\"}",
+          "refId": "GPU0",
+          "legendFormat": "GPU 0 (Whisper)"
+        },
+        {
+          "expr": "nvidia_gpu_temperature_celsius{gpu=\"1\"}",
+          "refId": "GPU1",
+          "legendFormat": "GPU 1 (LLM)"
+        },
+        {
+          "expr": "nvidia_gpu_temperature_celsius{gpu=\"2\"}",
+          "refId": "GPU2",
+          "legendFormat": "GPU 2 (LLM)"
+        },
+        {
+          "expr": "nvidia_gpu_temperature_celsius{gpu=\"3\"}",
+          "refId": "GPU3",
+          "legendFormat": "GPU 3 (Buffer)"
+        }
+      ],
+      "title": "GPU Temperature",
+      "type": "gauge"
+    },
+    {
+      "datasource": { "type": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "axisCenteredZero": false, "axisColorMode": "text", "axisLabel": "", "axisPlacement": "auto", "barAlignment": 0, "drawStyle": "line", "fillOpacity": 10, "gradientMode": "none", "hideFrom": { "legend": false, "tooltip": false, "viz": false }, "lineInterpolation": "linear", "lineWidth": 2, "pointSize": 5, "scaleDistribution": { "type": "linear" }, "showPoints": "never", "spanNulls": false, "stacking": { "group": "A", "mode": "none" }, "thresholdsStyle": { "mode": "off" } },
+          "mappings": [],
+          "unit": "percent"
+        }
+      },
+      "gridPos": { "h": 8, "w": 9, "x": 6, "y": 1 },
+      "id": 2,
+      "options": { "legend": { "calcs": ["lastNotNull"], "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "none" } },
+      "targets": [
+        { "expr": "avg by (gpu) (nvidia_gpu_utilization_ratio{gpu=~\"0|1|2|3\"}) * 100", "legendFormat": "GPU {{gpu}}" }
+      ],
+      "title": "GPU Utilization (%)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "axisCenteredZero": false, "axisColorMode": "text", "axisLabel": "", "axisPlacement": "auto", "barAlignment": 0, "drawStyle": "line", "fillOpacity": 10, "gradientMode": "none", "hideFrom": { "legend": false, "tooltip": false, "viz": false }, "lineInterpolation": "linear", "lineWidth": 2, "pointSize": 5, "scaleDistribution": { "type": "linear" }, "showPoints": "never", "spanNulls": false, "stacking": { "group": "A", "mode": "none" }, "thresholdsStyle": { "mode": "off" } },
+          "mappings": [],
+          "unit": "decbytes"
+        }
+      },
+      "gridPos": { "h": 8, "w": 9, "x": 15, "y": 1 },
+      "id": 3,
+      "options": { "legend": { "calcs": ["lastNotNull", "max"], "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "none" } },
+      "targets": [
+        { "expr": "nvidia_gpu_memory_used_bytes{gpu=\"0\"}", "legendFormat": "GPU 0 (Whisper) Used" },
+        { "expr": "nvidia_gpu_memory_used_bytes{gpu=\"1\"}", "legendFormat": "GPU 1 (LLM) Used" },
+        { "expr": "nvidia_gpu_memory_used_bytes{gpu=\"2\"}", "legendFormat": "GPU 2 (LLM) Used" },
+        { "expr": "nvidia_gpu_memory_total_bytes{gpu=\"0\"}", "legendFormat": "GPU 0 Total" },
+        { "expr": "nvidia_gpu_memory_total_bytes{gpu=\"1\"}", "legendFormat": "GPU 1 Total" }
+      ],
+      "title": "GPU Memory Usage",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 9 },
+      "id": 20,
+      "panels": [],
+      "title": "Allocation Plan",
+      "type": "row"
+    },
+    {
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 10 },
+      "id": 11,
+      "options": {
+        "content": "| GPU | 分配服务 | 预期显存 | 优先级 |\n|------|---------|---------|--------|\n| **GPU 0** | Whisper (faster-whisper large-v3) | ~5-6 GB | P0 关键路径 |\n| **GPU 1** | LLM (vLLM Qwen 14B INT4, TP=1)  | ~8-10 GB | P0 关键路径 |\n| **GPU 2** | LLM 扩展 (TP=2) / 并发 Whisper | ~8-10 GB | P1 弹性扩容 |\n| **GPU 3** | 缓冲 / 开发调试 / 未来模型 | — | 预留 |\n\n> ⚠️ 总显存预算: 4×24GB = 96GB，PVE 分配 34-42GB，预留充足余量。",
+        "mode": "markdown"
+      },
+      "pluginVersion": "10.0.0",
+      "type": "text"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 16 },
+      "id": 30,
+      "panels": [],
+      "title": "System Resources",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "axisCenteredZero": false, "axisColorMode": "text", "axisPlacement": "auto", "drawStyle": "line", "fillOpacity": 10, "lineInterpolation": "linear", "pointSize": 5, "showPoints": "never", "spanNulls": false, "stacking": { "group": "A", "mode": "none" } },
+          "unit": "percent"
+        }
+      },
+      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 17 },
+      "id": 31,
+      "options": { "legend": { "placement": "bottom" } },
+      "targets": [
+        { "expr": "100 - (avg by (instance) (rate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100)", "legendFormat": "CPU Usage" }
+      ],
+      "title": "CPU Utilization",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "drawStyle": "line", "fillOpacity": 10, "lineInterpolation": "linear", "showPoints": "never" },
+          "unit": "decbytes"
+        }
+      },
+      "gridPos": { "h": 6, "w": 8, "x": 8, "y": 17 },
+      "id": 32,
+      "options": { "legend": { "placement": "bottom" } },
+      "targets": [
+        { "expr": "node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes", "legendFormat": "Used" },
+        { "expr": "node_memory_MemTotal_bytes", "legendFormat": "Total" }
+      ],
+      "title": "Memory Usage",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "drawStyle": "line", "fillOpacity": 10, "lineInterpolation": "linear", "showPoints": "never" },
+          "unit": "decbytes"
+        }
+      },
+      "gridPos": { "h": 6, "w": 8, "x": 16, "y": 17 },
+      "id": 33,
+      "options": { "legend": { "placement": "bottom" } },
+      "targets": [
+        { "expr": "node_filesystem_avail_bytes{mountpoint=\"/\"}", "legendFormat": "Root Available" },
+        { "expr": "node_filesystem_avail_bytes{mountpoint=\"/data\"}", "legendFormat": "/data Available" }
+      ],
+      "title": "Disk Space Available",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "10s",
+  "schemaVersion": 38,
+  "style": "dark",
+  "tags": ["gpu", "learnflow"],
+  "templating": { "list": [] },
+  "time": { "from": "now-6h", "to": "now" },
+  "timepicker": {},
+  "timezone": "Asia/Shanghai",
+  "title": "学知图谱 — GPU 监控面板",
+  "uid": "learnflow-gpu",
+  "version": 1
+}

@@ -1,0 +1,30 @@
+# =============================================================================
+# Prometheus 配置 — 采集 GPU / 主机 / 应用指标
+# =============================================================================
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  # NVIDIA GPU 指标 (GPU 温度、显存使用、功耗、利用率)
+  - job_name: "nvidia-gpu"
+    static_configs:
+      - targets: ["nvidia-smi-exporter:9835"]
+
+  # 主机系统指标 (CPU / 内存 / 磁盘 / 网络)
+  - job_name: "node"
+    static_configs:
+      - targets: ["node-exporter:9100"]
+
+  # 后端 API 指标（如有 metrics endpoint）
+  - job_name: "backend"
+    static_configs:
+      - targets: ["host.docker.internal:8000"]
+        labels:
+          service: "learnflow-backend"
+
+  # PostgreSQL 指标（如有 postgres-exporter）
+  # - job_name: "postgresql"
+  #   static_configs:
+  #     - targets: ["postgres-exporter:9187"]

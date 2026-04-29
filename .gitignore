@@ -1,0 +1,40 @@
+# Dependencies
+node_modules/
+.pytest_cache/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Build
+.next/
+dist/
+build/
+*.tsbuildinfo
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+/tmp/
+
+# Environment
+.env
+.env.local
+
+# Cache
+.cache/
+.coverage*
+coverage/
+
+# Node
+package-lock.json

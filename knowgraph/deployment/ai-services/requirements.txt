@@ -1,0 +1,17 @@
+# AI Services — runs on GPU (dual 4090)
+# Whisper ASR + LLM inference
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+python-multipart==0.0.20
+httpx==0.28.1
+
+# Whisper — GPU accelerated
+faster-whisper==1.1.1
+torch>=2.0.0
+numpy<2.0.0
+
+# LLM (local inference)
+# Uncomment for local LLM:
+# vllm==0.6.0
+# transformers>=4.44.0
+# torch>=2.0.0
