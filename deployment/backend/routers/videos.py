@@ -210,46 +210,49 @@ async def process_video_pipeline(video_id: int, video_path: str):
 
     async with async_session() as db:
         try:
-            # Get video record
             query = select(Video).where(Video.id == video_id)
             result = await db.execute(query)
             video = result.scalar_one()
 
-            # Update status
             video.status = VideoStatus.PROCESSING
+            video.progress = 5
             await db.commit()
 
-            # Step 1: Get video duration + extract audio
+            # Step 1: Get duration + extract audio (0-20%)
             duration = await get_video_duration(video_path)
             video.duration = duration
+            video.progress = 10
             await db.commit()
 
             audio_dir = Path(settings.upload_dir) / "audio"
             audio_dir.mkdir(parents=True, exist_ok=True)
             audio_path = str(audio_dir / f"audio_{video_id}.wav")
-
             await extract_audio(video_path, audio_path)
-
-            # Step 2: Transcribe audio
-            transcription = await asr_service.transcribe(audio_path)
-            video.status = VideoStatus.ASR_DONE
+            video.progress = 20
             await db.commit()
 
-            # Step 3: Extract keyframes
+            # Step 2: Transcribe audio (20-40%)
+            transcription = await asr_service.transcribe(audio_path)
+            video.status = VideoStatus.ASR_DONE
+            video.progress = 40
+            await db.commit()
+
+            # Step 3: Extract keyframes (40-45%)
             keyframe_dir = Path(settings.upload_dir) / "keyframes" / str(video_id)
             keyframes = await extract_keyframes(video_path, str(keyframe_dir))
+            video.progress = 45
+            await db.commit()
 
-            # Step 4: Process each segment with LLM
+            # Step 4: Process segments with LLM (45-70%)
             segments_data = []
+            total_segs = len(transcription.get("segments", []))
             for i, seg in enumerate(transcription.get("segments", [])):
                 start = seg.get("start", i * 10)
                 end = seg.get("end", (i + 1) * 10)
                 text = seg.get("text", "")
 
-                # Analyze segment with LLM
                 analysis = await generate_segment_analysis(text, start)
 
-                # Create DB segment
                 db_segment = VideoSegment(
                     video_id=video.id,
                     segment_index=i,
@@ -271,18 +274,28 @@ async def process_video_pipeline(video_id: int, video_path: str):
                     "content": text,
                 })
 
+                if total_segs > 0:
+                    video.progress = 45 + int(25 * (i + 1) / total_segs)
+                    await db.commit()
+
             await db.commit()
             video.status = VideoStatus.NOTES_DONE
+            video.progress = 70
             await db.commit()
 
-            # Step 5: Build knowledge graph
+            # Step 5: Build knowledge graph (70-95%)
             from models.knowledge_node import KnowledgeNode, NodeType
             from models.relation import Relation, RelationType
 
+            video.progress = 75
+            await db.commit()
+
             graph_data = await build_video_graph(segments_data)
 
-            # Save nodes
-            node_map = {}  # index -> DB id
+            video.progress = 85
+            await db.commit()
+
+            node_map = {}
             for idx, nd in enumerate(graph_data.get("nodes", [])):
                 db_node = KnowledgeNode(
                     video_id=video.id,
@@ -297,7 +310,6 @@ async def process_video_pipeline(video_id: int, video_path: str):
                 await db.flush()
                 node_map[idx] = db_node.id
 
-            # Save relations
             for rel in graph_data.get("relations", []):
                 src_idx = rel.get("source_node_index")
                 tgt_idx = rel.get("target_node_index")
@@ -313,14 +325,15 @@ async def process_video_pipeline(video_id: int, video_path: str):
 
             await db.commit()
             video.status = VideoStatus.GRAPH_DONE
+            video.progress = 95
             await db.commit()
 
             # Step 6: Done!
             video.status = VideoStatus.COMPLETED
+            video.progress = 100
             await db.commit()
 
         except Exception as e:
-            # Update status to failed
             try:
                 video.status = VideoStatus.FAILED
                 video.error_message = str(e)

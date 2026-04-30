@@ -99,7 +99,7 @@ class LLMService:
         try:
             # Try OpenAI-compatible chat completions endpoint
             resp = await self.client.post(
-                f"{self.api_base}/v1/chat/completions",
+                f"{self.api_base}/chat/completions",
                 headers=headers,
                 json=payload,
                 timeout=120.0

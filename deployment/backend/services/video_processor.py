@@ -1,9 +1,14 @@
 """Video processing service — FFmpeg keyframe extraction, format handling."""
 import os
-import asyncio
+import sys
 import subprocess
 from pathlib import Path
 from config import settings
+
+
+def _run_cmd(cmd: list) -> subprocess.CompletedProcess:
+    """Run a command, using shell=True on Windows for compatibility."""
+    return subprocess.run(cmd, capture_output=True, text=True, shell=(sys.platform == "win32"))
 
 
 async def extract_audio(video_path: str, output_path: str) -> str:
@@ -13,21 +18,16 @@ async def extract_audio(video_path: str, output_path: str) -> str:
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     cmd = [
         "ffmpeg", "-i", video_path,
-        "-vn",                    # no video
-        "-acodec", "pcm_s16le",   # PCM 16-bit
-        "-ar", "16000",           # 16kHz sample rate (Whisper optimal)
-        "-ac", "1",               # mono
-        "-y",                     # overwrite
+        "-vn",
+        "-acodec", "pcm_s16le",
+        "-ar", "16000",
+        "-ac", "1",
+        "-y",
         output_path
     ]
-    proc = await asyncio.create_subprocess_exec(
-        *cmd,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE
-    )
-    stdout, stderr = await proc.communicate()
-    if proc.returncode != 0:
-        raise RuntimeError(f"FFmpeg audio extraction failed: {stderr.decode()}")
+    result = _run_cmd(cmd)
+    if result.returncode != 0:
+        raise RuntimeError(f"FFmpeg audio extraction failed: {result.stderr}")
     return output_path
 
 
@@ -48,14 +48,8 @@ async def extract_keyframes(video_path: str, output_dir: str, interval: int = No
         "-y",
         output_pattern
     ]
-    proc = await asyncio.create_subprocess_exec(
-        *cmd,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE
-    )
-    await proc.communicate()
+    _run_cmd(cmd)
 
-    # Collect generated keyframes
     frames = sorted([
         os.path.join(output_dir, f)
         for f in os.listdir(output_dir)
@@ -72,13 +66,10 @@ async def get_video_duration(video_path: str) -> float:
         "-of", "default=noprint_wrappers=1:nokey=1",
         video_path
     ]
-    proc = await asyncio.create_subprocess_exec(
-        *cmd,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE
-    )
-    stdout, _ = await proc.communicate()
-    return float(stdout.decode().strip())
+    result = _run_cmd(cmd)
+    if result.returncode != 0:
+        raise RuntimeError(f"ffprobe failed: {result.stderr}")
+    return float(result.stdout.strip())
 
 
 def find_closest_keyframe(keyframes: list, timestamp: float, interval: int = 10) -> str:

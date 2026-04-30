@@ -28,6 +28,7 @@ class Video(Base):
     status = Column(SAEnum(VideoStatus), default=VideoStatus.UPLOADED)
     source_url = Column(Text, nullable=True)  # original URL if imported from link
     error_message = Column(Text, nullable=True)
+    progress = Column(Integer, default=0)  # Processing progress 0-100
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
