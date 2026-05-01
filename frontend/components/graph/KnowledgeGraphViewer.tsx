@@ -30,8 +30,12 @@ interface KnowledgeGraphViewerProps {
   relations: Relation[];
   mode?: GraphMode;
   onNodeClick?: (node: KnowledgeNode) => void;
+  onNodeContextMenu?: (node: KnowledgeNode, event: MouseEvent) => void;
   onModeChange?: (mode: GraphMode) => void;
   selectedNodeId?: string;
+  highlightNodeId?: string;
+  searchQuery?: string;
+  searchMatchedIds?: Set<string>;
   className?: string;
   darkMode?: boolean;
 }
@@ -46,7 +50,11 @@ export function KnowledgeGraphViewer({
   relations,
   mode = 'cluster',
   onNodeClick,
+  onNodeContextMenu,
   selectedNodeId,
+  highlightNodeId,
+  searchQuery,
+  searchMatchedIds,
   className,
   darkMode = false,
 }: KnowledgeGraphViewerProps) {
@@ -240,8 +248,56 @@ export function KnowledgeGraphViewer({
       if (originalNode) onNodeClick?.(originalNode);
     });
 
+    // Node right-click context menu
+    node.on('contextmenu', (event, d) => {
+      event.preventDefault();
+      const originalNode = nodes.find((n) => n.id === d.id);
+      if (originalNode) onNodeContextMenu?.(originalNode, event as any as MouseEvent);
+    });
+
     node.on('mouseenter', (_event, d) => setHoveredNode(d.id));
     node.on('mouseleave', () => setHoveredNode(null));
+
+    // Search highlight: dim non-matching nodes
+    if (searchQuery && searchQuery.length > 0) {
+      const matchedSet = searchMatchedIds || new Set<string>();
+      node.filter((d) => !matchedSet.has(d.id))
+        .select('circle')
+        .attr('opacity', 0.15);
+      node.filter((d) => !matchedSet.has(d.id))
+        .select('text')
+        .attr('opacity', 0.15);
+
+      // Highlight matched nodes with glow
+      node.filter((d) => matchedSet.has(d.id))
+        .select('circle')
+        .attr('stroke', darkMode ? '#fbbf24' : '#f59e0b')
+        .attr('stroke-width', 3)
+        .attr('filter', 'url(#node-glow)');
+
+      // Dim non-matched links
+      link.attr('stroke-opacity', 0.08);
+      // Highlight links where both ends match
+      link.filter((d) => {
+        const sourceId = typeof d.source === 'object' ? d.source.id : d.source;
+        const targetId = typeof d.target === 'object' ? d.target.id : d.target;
+        return matchedSet.has(sourceId as string) || matchedSet.has(targetId as string);
+      }).attr('stroke-opacity', 0.5).attr('stroke', darkMode ? '#fbbf24' : '#f59e0b');
+    }
+
+    // Highlight specific node (from search hover/select)
+    if (highlightNodeId && !(searchQuery && searchQuery.length > 0)) {
+      node.filter((d) => d.id === highlightNodeId)
+        .select('circle')
+        .attr('stroke', darkMode ? '#fbbf24' : '#f59e0b')
+        .attr('stroke-width', 3)
+        .attr('filter', 'url(#node-glow)');
+
+      // Dim non-highlighted nodes
+      node.filter((d) => d.id !== highlightNodeId && d.id !== selectedNodeId)
+        .select('circle')
+        .attr('opacity', 0.3);
+    }
 
     // Simulation tick
     simulation.on('tick', () => {

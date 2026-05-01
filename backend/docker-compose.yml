@@ -1,0 +1,158 @@
+# ============================================================
+# StudyAI — Full-Stack Docker Compose
+# ============================================================
+# Start:   docker compose up -d
+# Stop:    docker compose down
+# Logs:    docker compose logs -f backend
+# Rebuild: docker compose build --no-cache backend
+# ============================================================
+
+services:
+  # ── PostgreSQL 16 ──
+  postgres:
+    image: postgres:16-alpine
+    container_name: studyai-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: studyai
+      POSTGRES_PASSWORD: studyai
+      POSTGRES_DB: studyai
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U studyai -d studyai"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - studyai-net
+
+  # ── Redis 7 ──
+  redis:
+    image: redis:7-alpine
+    container_name: studyai-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - studyai-net
+
+  # ── FastAPI Backend ──
+  backend:
+    build:
+      context: ./backend
+      dockerfile: ../Dockerfile
+    container_name: studyai-backend
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env
+    environment:
+      - APP_DATABASE_URL=postgresql+asyncpg://studyai:studyai@postgres:5432/studyai
+      - APP_DATABASE_SYNC_URL=postgresql://studyai:studyai@postgres:5432/studyai
+      - APP_REDIS_URL=redis://redis:6379/0
+      - APP_REDIS_RESULT_BACKEND=redis://redis:6379/1
+      - APP_CELERY_BROKER_URL=redis://redis:6379/0
+      - APP_CELERY_RESULT_BACKEND=redis://redis:6379/1
+      - APP_WHISPER_SERVICE_URL=http://whisper:8001
+      - APP_LLM_SERVICE_URL=http://llm:8002
+    ports:
+      - "8000:8000"
+    volumes:
+      - uploads_data:/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - studyai-net
+
+  # ── Celery Worker (ASR) ──
+  celery-worker:
+    build:
+      context: ./backend
+      dockerfile: ../Dockerfile
+    container_name: studyai-celery
+    restart: unless-stopped
+    command: >
+      celery -A backend.celery_app worker
+      --loglevel=info
+      --concurrency=2
+      --queues=asr,notes,graph
+      --hostname=worker@%h
+    env_file:
+      - ./backend/.env
+    environment:
+      - APP_DATABASE_URL=postgresql+asyncpg://studyai:studyai@postgres:5432/studyai
+      - APP_REDIS_URL=redis://redis:6379/0
+      - APP_CELERY_BROKER_URL=redis://redis:6379/0
+      - APP_CELERY_RESULT_BACKEND=redis://redis:6379/1
+      - APP_WHISPER_SERVICE_URL=http://whisper:8001
+      - APP_LLM_SERVICE_URL=http://llm:8002
+    volumes:
+      - uploads_data:/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - studyai-net
+
+  # ── Whisper ASR Service ──
+  whisper:
+    image: onerahmet/openai-whisper-asr-webservice:latest-gpu
+    container_name: studyai-whisper
+    restart: unless-stopped
+    ports:
+      - "8001:9000"
+    environment:
+      - ASR_MODEL=base
+      - ASR_ENGINE=openai_whisper
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    networks:
+      - studyai-net
+
+  # ── LLM Service (vLLM / Ollama) ──
+  llm:
+    image: ollama/ollama:latest
+    container_name: studyai-llm
+    restart: unless-stopped
+    ports:
+      - "8002:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    networks:
+      - studyai-net
+
+volumes:
+  postgres_data:
+  redis_data:
+  uploads_data:
+  ollama_data:
+
+networks:
+  studyai-net:
+    driver: bridge

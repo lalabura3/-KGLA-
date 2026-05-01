@@ -20,3 +20,15 @@ export async function getNodeDetail(videoId: string, nodeId: string) {
   const { data } = await client.get(`/videos/${videoId}/graph/nodes/${nodeId}`);
   return data;
 }
+
+export async function updateMastery(
+  videoId: string,
+  nodeId: string,
+  mastery: string,
+) {
+  const { data } = await client.patch(
+    `/videos/${videoId}/graph/nodes/${nodeId}/mastery`,
+    { mastery },
+  );
+  return data;
+}

@@ -1,35 +1,66 @@
 'use client';
 
+import { useState, useCallback } from 'react';
 import { cn } from '@/lib/utils/cn';
 import { Badge, Tag } from '@/components/ui';
 import { NODE_COLORS } from '@/lib/design-tokens';
 import { nodeTypeColor } from '@/components/ui/Tag';
 import type { KnowledgeNode, MasteryLevel } from '@/types';
 
-const masteryLabels: Record<MasteryLevel, { label: string; color: 'success' | 'warning' | 'neutral' }> = {
-  mastered: { label: '已掌握', color: 'success' },
-  learning: { label: '学习中', color: 'warning' },
-  not_learned: { label: '未学习', color: 'neutral' },
+const masteryConfig: Record<
+  MasteryLevel,
+  { label: string; color: 'success' | 'warning' | 'neutral'; next: MasteryLevel }
+> = {
+  mastered: { label: '已掌握', color: 'success', next: 'not_learned' },
+  learning: { label: '学习中', color: 'warning', next: 'mastered' },
+  not_learned: { label: '未学习', color: 'neutral', next: 'learning' },
 };
 
 interface NodeDetailPanelProps {
   node: KnowledgeNode | null;
   onClose?: () => void;
+  onMasteryChange?: (nodeId: string, newMastery: MasteryLevel) => void;
   relatedNodes?: { id: string; name: string; relation: string }[];
   className?: string;
 }
 
-export function NodeDetailPanel({ node, onClose, relatedNodes = [], className }: NodeDetailPanelProps) {
+export function NodeDetailPanel({
+  node,
+  onClose,
+  onMasteryChange,
+  relatedNodes = [],
+  className,
+}: NodeDetailPanelProps) {
+  const [currMastery, setCurrMastery] = useState<MasteryLevel | null>(null);
+
+  // Sync local mastery state when node changes
+  if (node && currMastery !== node.mastery && currMastery === null) {
+    setCurrMastery(node.mastery);
+  }
+
+  const handleMasteryToggle = useCallback(() => {
+    if (!node || !currMastery) return;
+    const nextMastery = masteryConfig[currMastery].next;
+    setCurrMastery(nextMastery);
+    onMasteryChange?.(node.id, nextMastery);
+  }, [node, currMastery, onMasteryChange]);
+
   if (!node) {
     return (
-      <div className={cn('rounded-xl border border-dashed border-gray-200 bg-gray-50 p-6 text-center', className)}>
+      <div
+        className={cn(
+          'rounded-xl border border-dashed border-gray-200 bg-gray-50 p-6 text-center',
+          className,
+        )}
+      >
         <p className="text-sm text-gray-400">点击节点查看详情</p>
       </div>
     );
   }
 
   const color = NODE_COLORS[node.node_type] || '#6366f1';
-  const mastery = masteryLabels[node.mastery] || masteryLabels.not_learned;
+  const activeMastery = currMastery || node.mastery;
+  const mastery = masteryConfig[activeMastery] || masteryConfig.not_learned;
 
   return (
     <div className={cn('rounded-xl border border-gray-200 bg-white', className)}>
@@ -48,15 +79,40 @@ export function NodeDetailPanel({ node, onClose, relatedNodes = [], className }:
               <Tag color={nodeTypeColor[node.node_type] || 'gray'} size="sm" dot>
                 {node.node_type}
               </Tag>
-              <Badge status={mastery.color}>{mastery.label}</Badge>
-              <span className="text-xs text-gray-400">
-                重要性 {node.importance}/10
-              </span>
+
+              {/* Interactive mastery badge */}
+              <button
+                type="button"
+                onClick={handleMasteryToggle}
+                className="group relative cursor-pointer rounded-full transition-transform hover:scale-105 active:scale-95"
+                title={`当前: ${mastery.label} — 点击切换到 ${
+                  masteryConfig[currMastery || node.mastery]?.next
+                    ? masteryConfig[masteryConfig[currMastery || node.mastery].next].label
+                    : ''
+                }`}
+              >
+                <Badge status={mastery.color}>
+                  {mastery.label}
+                  <svg
+                    className="ml-1 h-3 w-3 opacity-60 group-hover:opacity-100 transition-opacity"
+                    viewBox="0 0 20 20"
+                    fill="currentColor"
+                  >
+                    <path d="M10 12.5l-5-5h10l-5 5z" />
+                  </svg>
+                </Badge>
+              </button>
+
+              <span className="text-xs text-gray-400">重要性 {node.importance}/10</span>
             </div>
           </div>
         </div>
         {onClose && (
-          <button onClick={onClose} className="rounded p-1 text-gray-400 hover:bg-gray-100" aria-label="关闭">
+          <button
+            onClick={onClose}
+            className="rounded p-1 text-gray-400 hover:bg-gray-100"
+            aria-label="关闭"
+          >
             <svg width="18" height="18" viewBox="0 0 20 20" fill="currentColor">
               <path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" />
             </svg>
@@ -82,6 +138,59 @@ export function NodeDetailPanel({ node, onClose, relatedNodes = [], className }:
                 background: color,
               }}
             />
+          </div>
+        </div>
+
+        {/* Mastery progress indicator */}
+        <div className="mt-4 rounded-lg bg-gray-50 p-3">
+          <p className="text-xs font-medium text-gray-500 mb-2">掌握度</p>
+          <div className="flex items-center gap-1.5">
+            {(['not_learned', 'learning', 'mastered'] as MasteryLevel[]).map((level, idx) => {
+              const cfg = masteryConfig[level];
+              const isActive = activeMastery === level;
+              const isPast =
+                (activeMastery === 'mastered') ||
+                (activeMastery === 'learning' && level === 'not_learned');
+              return (
+                <div key={level} className="flex items-center gap-1.5 flex-1">
+                  <div
+                    className={cn(
+                      'h-2.5 flex-1 rounded-full transition-colors duration-300',
+                      isActive
+                        ? level === 'not_learned'
+                          ? 'bg-gray-400'
+                          : level === 'learning'
+                            ? 'bg-yellow-400'
+                            : 'bg-green-500'
+                        : isPast
+                          ? 'bg-green-300'
+                          : 'bg-gray-200',
+                    )}
+                  />
+                  {idx < 2 && (
+                    <div
+                      className={cn(
+                        'h-px w-2',
+                        isPast ? 'bg-green-300' : 'bg-gray-200',
+                      )}
+                    />
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          <div className="mt-1.5 flex justify-between">
+            {(['not_learned', 'learning', 'mastered'] as MasteryLevel[]).map((level) => (
+              <span
+                key={level}
+                className={cn(
+                  'text-[10px] leading-tight transition-colors',
+                  activeMastery === level ? 'font-semibold text-gray-700' : 'text-gray-400',
+                )}
+              >
+                {masteryConfig[level].label}
+              </span>
+            ))}
           </div>
         </div>
 

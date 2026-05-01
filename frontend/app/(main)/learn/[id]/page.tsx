@@ -9,10 +9,12 @@ import {
   Skeleton, Tabs, Spinner, Alert, Badge, Tooltip, Input, Button,
   EmptyState,
 } from '@/components/ui';
-import { KnowledgeGraphViewer, GraphControls, NodeDetailPanel } from '@/components/graph';
+import { KnowledgeGraphViewer, GraphControls, NodeDetailPanel, GraphSearch } from '@/components/graph';
+import { updateMastery } from '@/lib/api/graph';
 import { askQuestion } from '@/lib/api/qa';
 import { cn } from '@/lib/utils/cn';
-import type { KnowledgeNode, NoteSegment, QAResponse } from '@/types';
+import { exportNotes } from '@/lib/utils/export';
+import type { KnowledgeNode, NoteSegment, QAResponse, MasteryLevel, Notes } from '@/types';
 
 // ── Note segment card ──
 function NoteSegmentCard({
@@ -52,13 +54,19 @@ function NoteSegmentCard({
 // ── Notes panel ──
 function NotesPanel({
   segments,
+  notes,
+  videoTitle,
   onSeekTo,
   currentVideoTime,
 }: {
   segments: NoteSegment[];
+  notes: Notes | null;
+  videoTitle?: string;
   onSeekTo: (time: number) => void;
   currentVideoTime: number;
 }) {
+  const [exportOpen, setExportOpen] = useState(false);
+
   if (segments.length === 0) {
     return (
       <EmptyState
@@ -74,11 +82,55 @@ function NotesPanel({
     (s) => currentVideoTime >= s.start_time && currentVideoTime < s.end_time,
   );
 
+  const handleExport = (fmt: 'markdown' | 'json') => {
+    if (notes) exportNotes(notes, fmt, videoTitle);
+    setExportOpen(false);
+  };
+
   return (
     <div className="space-y-2">
-      <p className="text-xs text-gray-500 mb-2">
-        共 {segments.length} 个段落 · 点击跳转到对应时间
-      </p>
+      <div className="flex items-center justify-between mb-2">
+        <p className="text-xs text-gray-500">
+          共 {segments.length} 个段落 · 点击跳转到对应时间
+        </p>
+
+        {/* Export dropdown */}
+        <div className="relative">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setExportOpen(!exportOpen)}
+          >
+            <svg className="h-4 w-4 mr-1" viewBox="0 0 20 20" fill="currentColor">
+              <path d="M10.75 2.75a.75.75 0 00-1.5 0v8.614L6.295 8.235a.75.75 0 10-1.09 1.03l4.25 4.5a.75.75 0 001.09 0l4.25-4.5a.75.75 0 00-1.09-1.03l-2.955 3.129V2.75z" />
+              <path d="M3.5 12.75a.75.75 0 00-1.5 0v2.5A2.75 2.75 0 004.75 18h10.5A2.75 2.75 0 0018 15.25v-2.5a.75.75 0 00-1.5 0v2.5c0 .69-.56 1.25-1.25 1.25H4.75c-.69 0-1.25-.56-1.25-1.25v-2.5z" />
+            </svg>
+            导出
+          </Button>
+          {exportOpen && (
+            <div className="absolute right-0 top-full mt-1 z-50 w-36 rounded-lg border border-gray-200 bg-white shadow-lg py-1">
+              <button
+                onClick={() => handleExport('markdown')}
+                className="flex w-full items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+              >
+                <svg className="h-4 w-4 text-gray-400" viewBox="0 0 20 20" fill="currentColor">
+                  <path d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zM3 10a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1v-6zM14 9a1 1 0 00-1 1v6a1 1 0 001 1h2a1 1 0 001-1v-6a1 1 0 00-1-1h-2z" />
+                </svg>
+                Markdown
+              </button>
+              <button
+                onClick={() => handleExport('json')}
+                className="flex w-full items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+              >
+                <svg className="h-4 w-4 text-gray-400" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M12.316 3.051a1 1 0 01.633 1.265l-4 12a1 1 0 11-1.898-.632l4-12a1 1 0 011.265-.633zM5.707 6.293a1 1 0 010 1.414L3.414 10l2.293 2.293a1 1 0 11-1.414 1.414l-3-3a1 1 0 010-1.414l3-3a1 1 0 011.414 0zm8.586 0a1 1 0 011.414 0l3 3a1 1 0 010 1.414l-3 3a1 1 0 11-1.414-1.414L16.586 10l-2.293-2.293a1 1 0 010-1.414z" clipRule="evenodd" />
+                </svg>
+                JSON
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
       <div className="max-h-[600px] space-y-2 overflow-y-auto pr-1">
         {segments.map((seg, i) => (
           <NoteSegmentCard
@@ -246,6 +298,9 @@ function GraphPanel({
   const { data: graph, isLoading, error } = useGraph(videoId);
   const [selectedNode, setSelectedNode] = useState<KnowledgeNode | null>(null);
   const [graphMode, setGraphMode] = useState<'cluster' | 'focus' | 'path'>('cluster');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchMatchedIds, setSearchMatchedIds] = useState<Set<string>>(new Set());
+  const [highlightNodeId, setHighlightNodeId] = useState<string | null>(null);
 
   const nodes = graph?.nodes || [];
   const relations = graph?.relations || [];
@@ -253,10 +308,23 @@ function GraphPanel({
   const handleNodeClick = (node: KnowledgeNode) => {
     setSelectedNode(node);
     if (node.timestamp > 0 && typeof node.timestamp === 'number') {
-      // Also seek video to this node's timestamp
       onSeekTo(Number(node.timestamp));
     }
   };
+
+  const handleMasteryChange = useCallback(
+    async (nodeId: string, newMastery: MasteryLevel) => {
+      setSelectedNode((prev) =>
+        prev?.id === nodeId ? { ...prev, mastery: newMastery } : prev,
+      );
+      try {
+        await updateMastery(videoId, nodeId, newMastery);
+      } catch {
+        // Revert on error — refetch will correct it
+      }
+    },
+    [videoId],
+  );
 
   if (isLoading) {
     return <div className="flex items-center justify-center py-12"><Spinner size="lg" /></div>;
@@ -282,12 +350,24 @@ function GraphPanel({
 
   return (
     <div className="space-y-3">
-      <GraphControls
-        mode={graphMode}
-        onModeChange={setGraphMode}
-        nodeCount={nodes.length}
-        relationCount={relations.length}
-      />
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <GraphControls
+          mode={graphMode}
+          onModeChange={setGraphMode}
+          nodeCount={nodes.length}
+          relationCount={relations.length}
+        />
+        <GraphSearch
+          videoId={videoId}
+          onSearchResult={(results, q) => {
+            setSearchQuery(q);
+            setSearchMatchedIds(new Set(results.map((n) => n.id)));
+            if (results.length === 0) setHighlightNodeId(null);
+          }}
+          onHighlightNode={setHighlightNodeId}
+          className="w-full sm:w-72"
+        />
+      </div>
       <div className="grid gap-3 lg:grid-cols-3">
         <div className="lg:col-span-2">
           <KnowledgeGraphViewer
@@ -296,6 +376,9 @@ function GraphPanel({
             mode={graphMode}
             onNodeClick={handleNodeClick}
             selectedNodeId={selectedNode?.id}
+            searchQuery={searchQuery}
+            searchMatchedIds={searchMatchedIds}
+            highlightNodeId={highlightNodeId ?? undefined}
             className="h-[500px]"
           />
         </div>
@@ -303,6 +386,7 @@ function GraphPanel({
           <NodeDetailPanel
             node={selectedNode}
             onClose={() => setSelectedNode(null)}
+            onMasteryChange={handleMasteryChange}
             className="h-[500px] overflow-y-auto"
           />
         </div>
@@ -391,6 +475,8 @@ export default function LearnPage({ params }: { params: { id: string } }) {
       content: (
         <NotesPanel
           segments={segments}
+          notes={notes ?? null}
+          videoTitle={video?.title}
           onSeekTo={handleSeekTo}
           currentVideoTime={currentTime}
         />
